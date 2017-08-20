@@ -1,0 +1,22 @@
+version: 2
+jobs:
+  build:
+    docker: 
+      - image: rolandhawk/govendor
+
+    working_directory: /go/src/github.com/rolandhawk/dynamicvector
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - vendor-{{ checksum "vendor/vendor.json" }}
+            - vendor
+      - run: govendor sync
+      - save_cache:
+          paths: [vendor/github.com]
+          key: vendor-{{ checksum "vendor/vendor.json" }}
+
+      - run: go test -race -coverprofile=coverage.txt -covermode=atomic
+      - run: bash <(curl -s https://codecov.io/bash)
