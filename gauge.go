@@ -16,16 +16,17 @@ import (
 
 // Gauge is a gauge dynamicvector
 type Gauge struct {
-	*Vector
+	Vector
 }
 
 // NewGauge will return a new dynamicvector gauge.
 func NewGauge(opts GaugeOpts) *Gauge {
-	vec := &Vector{
-		Name:   prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		Help:   opts.Help,
-		Labels: NewLabels(opts.ConstLabels),
-		Expire: opts.Expire,
+	vec := &vector{
+		Name:      prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+		Help:      opts.Help,
+		Labels:    NewLabels(opts.ConstLabels),
+		Expire:    opts.Expire,
+		MaxLength: opts.MaxLength,
 	}
 
 	vec.constructor = func(labelValues []string) Metric {
@@ -47,7 +48,7 @@ func (g *Gauge) With(labels prometheus.Labels) prometheus.Gauge {
 
 type gaugeUnit struct {
 	val    float64
-	vec    *Vector
+	vec    *vector
 	labels []string
 	last   time.Time
 

@@ -16,16 +16,17 @@ import (
 
 // Histogram is a histogram dynamicvector
 type Histogram struct {
-	*Vector
+	Vector
 }
 
 // NewHistogram will return a new dynamicvector histogram.
 func NewHistogram(opts HistogramOpts) *Histogram {
-	vec := &Vector{
-		Name:   prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		Help:   opts.Help,
-		Labels: NewLabels(opts.ConstLabels),
-		Expire: opts.Expire,
+	vec := &vector{
+		Name:      prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+		Help:      opts.Help,
+		Labels:    NewLabels(opts.ConstLabels),
+		Expire:    opts.Expire,
+		MaxLength: opts.MaxLength,
 	}
 
 	vec.constructor = func(labelValues []string) Metric {
@@ -55,7 +56,7 @@ type histogramUnit struct {
 	sum     float64
 	count   uint64
 	buckets map[float64]uint64
-	vec     *Vector
+	vec     *vector
 	labels  []string
 	last    time.Time
 

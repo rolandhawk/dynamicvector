@@ -16,16 +16,17 @@ import (
 
 // Counter is a counter dynamicvector
 type Counter struct {
-	*Vector
+	Vector
 }
 
 // NewCounter will return a new dynamicvector counter.
 func NewCounter(opts CounterOpts) *Counter {
-	vec := &Vector{
-		Name:   prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		Help:   opts.Help,
-		Labels: NewLabels(opts.ConstLabels),
-		Expire: opts.Expire,
+	vec := &vector{
+		Name:      prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+		Help:      opts.Help,
+		Labels:    NewLabels(opts.ConstLabels),
+		Expire:    opts.Expire,
+		MaxLength: opts.MaxLength,
 	}
 
 	vec.constructor = func(labelValues []string) Metric {
@@ -47,7 +48,7 @@ func (c *Counter) With(labels prometheus.Labels) prometheus.Counter {
 
 type counterUnit struct {
 	val    float64
-	vec    *Vector
+	vec    *vector
 	labels []string
 	last   time.Time
 

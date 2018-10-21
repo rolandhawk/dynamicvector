@@ -9,6 +9,7 @@
 package dynamicvector
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -23,8 +24,53 @@ type Metric interface {
 	LastEdit() time.Time
 }
 
+// Vector is interface for raw Vector. It include the same behavior as prometheus.*Vec.
+type Vector interface {
+	prometheus.Collector
+
+	// Delete deletes the metric where the variable labels are the same as those passed in as labels.
+	// It returns true if a metric was deleted.
+	Delete(prometheus.Labels) bool
+
+	// DeleteLabelValues removes the metric where the variable labels are the same as those passed in
+	// as labels (same order as the VariableLabels in Desc). It returns true if a metric was deleted.
+	DeleteLabelValues(lvs ...string) bool
+
+	// GetMetricWith returns the Metric for the given Labels map (the label names must match those of
+	// the VariableLabels in Desc). If that label map is accessed for the first time, a new Metric is created.
+	GetMetricWith(prometheus.Labels) (prometheus.Metric, error)
+
+	// GetMetricWithLabelValues returns the Metric for the given slice of label values
+	// (same order as the VariableLabels in Desc). If that combination of label values is accessed for the first time,
+	// a new Metric is created.
+	GetMetricWithLabelValues(lvs ...string) (prometheus.Metric, error)
+
+	// With works as GetMetricWith, but panics where GetMetricWithLabels would have returned an error.
+	With(prometheus.Labels) prometheus.Metric
+
+	// WithLabelValues works as GetMetricWithLabelValues, but panics where GetMetricWithLabelValues would have returned an error.
+	WithLabelValues(lvs ...string) prometheus.Metric
+
+	// CurryWith returns a vector curried with the provided labels.
+	CurryWith(prometheus.Labels) (Vector, error)
+
+	// MustCurryWith works as CurryWith but panics where CurryWith would have returned an error.
+	MustCurryWith(prometheus.Labels) Vector
+
+	// Length will return number of metrics in this vector.
+	Length() int
+
+	// Reset will delete all metrics in vector.
+	Reset()
+
+	// GC will do housekeeping work related to this metrics and return
+	// number of metrics that is deleted. Currently there are two things that this method do.
+	// First, delete all expired metrics. Second, delete all metrics for vector that exceed MaxLength.
+	GC() int
+}
+
 // Vector is a dynamicvector that used to keep metrics.
-type Vector struct {
+type vector struct {
 	// Name is a fully qualified metric name for vector.
 	Name string
 
@@ -48,12 +94,12 @@ type Vector struct {
 	mtx sync.RWMutex
 }
 
-// Collect will return metrics to channel.
-func (v *Vector) Collect(ch chan<- prometheus.Metric) {
+// Collect implement prometheus.Collector.
+func (v *vector) Collect(ch chan<- prometheus.Metric) {
 	v.mtx.RLock()
 	defer v.mtx.RUnlock()
 
-	if v.MaxLength > 0 && v.Length() > v.MaxLength {
+	if v.exceedMaxLength() {
 		return
 	}
 
@@ -64,16 +110,15 @@ func (v *Vector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-// Describe will return prometheus.Desc for this vector.
-func (v *Vector) Describe(ch chan<- *prometheus.Desc) {
+// Describe implement prometheus.Collector.
+func (v *vector) Describe(ch chan<- *prometheus.Desc) {
 	v.mtx.RLock()
 	defer v.mtx.RUnlock()
 
 	ch <- v.desc
 }
 
-// Delete will delete metric that have exact match labels from vector.
-func (v *Vector) Delete(l prometheus.Labels) bool {
+func (v *vector) Delete(l prometheus.Labels) bool {
 	v.mtx.Lock()
 	defer v.mtx.Unlock()
 
@@ -88,28 +133,76 @@ func (v *Vector) Delete(l prometheus.Labels) bool {
 	return found
 }
 
-// With will return or create metric with specified labels.
-func (v *Vector) With(l prometheus.Labels) prometheus.Metric {
+func (v *vector) DeleteLabelValues(lvs ...string) bool {
+	if len(lvs) > len(v.Labels.Names) {
+		return false
+	}
+
+	l := v.Labels.GenerateWithoutConstant(lvs)
+	return v.Delete(l)
+}
+
+func (v *vector) GetMetricWith(labels prometheus.Labels) (prometheus.Metric, error) {
 	v.mtx.RLock()
-	metric := v.get(l)
+	metric := v.get(labels)
 	v.mtx.RUnlock()
 
 	if metric != nil {
-		return metric
+		return metric, nil
 	}
 
 	v.mtx.Lock()
 	defer v.mtx.Unlock()
-	metric = v.get(l)
-	if metric == nil {
-		metric = v.create(l)
+
+	metric = v.get(labels)
+	if metric != nil {
+		return metric, nil
+	}
+	if v.exceedMaxLength() {
+		return nil, fmt.Errorf("vector %s exceed length limit", v.Name)
 	}
 
-	return metric
+	return v.create(labels), nil
+}
+
+func (v *vector) GetMetricWithLabelValues(lvs ...string) (prometheus.Metric, error) {
+	if len(lvs) > len(v.Labels.Names) {
+		return nil, fmt.Errorf("label value length exceeds label key length")
+	}
+
+	l := v.Labels.GenerateWithoutConstant(lvs)
+	return v.GetMetricWith(l)
+}
+
+// With will return or create metric with specified labels.
+func (v *vector) With(l prometheus.Labels) prometheus.Metric {
+	m, err := v.GetMetricWith(l)
+	if err != nil {
+		panic(err)
+	}
+
+	return m
+}
+
+func (v *vector) WithLabelValues(lvs ...string) prometheus.Metric {
+	m, err := v.GetMetricWithLabelValues(lvs...)
+	if err != nil {
+		panic(err)
+	}
+
+	return m
+}
+
+func (v *vector) CurryWith(prometheus.Labels) (Vector, error) {
+	return nil, nil
+}
+
+func (v *vector) MustCurryWith(prometheus.Labels) Vector {
+	return nil
 }
 
 // Length will return number of metrics in this vector.
-func (v *Vector) Length() int {
+func (v *vector) Length() int {
 	if v.pseudoLength > 0 {
 		return v.pseudoLength
 	} else {
@@ -118,7 +211,7 @@ func (v *Vector) Length() int {
 }
 
 // Reset will delete all metrics in vector.
-func (v *Vector) Reset() {
+func (v *vector) Reset() {
 	v.mtx.Lock()
 	defer v.mtx.Unlock()
 
@@ -128,7 +221,7 @@ func (v *Vector) Reset() {
 // GC will do housekeeping work related to this metrics and return
 // number of metrics that is deleted. Currently there are two things that this method do.
 // First, delete all expired metrics. Second, delete all metrics for vector that exceed MaxLength.
-func (v *Vector) GC() int {
+func (v *vector) GC() int {
 	count := 0
 	v.mtx.Lock()
 	defer v.mtx.Unlock()
@@ -142,7 +235,7 @@ func (v *Vector) GC() int {
 	}
 
 	// delete all metrics for vector that exceed MaxLength
-	if v.MaxLength > 0 && v.Length() > v.MaxLength {
+	if v.exceedMaxLength() {
 		v.pseudoLength = v.Length()
 		v.reset()
 		count = count + v.pseudoLength
@@ -151,7 +244,7 @@ func (v *Vector) GC() int {
 	return count
 }
 
-func (v *Vector) get(l prometheus.Labels) prometheus.Metric {
+func (v *vector) get(l prometheus.Labels) prometheus.Metric {
 	if !v.Labels.Include(l) {
 		return nil
 	}
@@ -159,7 +252,7 @@ func (v *Vector) get(l prometheus.Labels) prometheus.Metric {
 	return v.metrics[v.Labels.Hash(l)]
 }
 
-func (v *Vector) create(l prometheus.Labels) prometheus.Metric {
+func (v *vector) create(l prometheus.Labels) prometheus.Metric {
 	var createDesc bool
 	labelValues := make([]string, len(v.Labels.Names))
 
@@ -183,9 +276,13 @@ func (v *Vector) create(l prometheus.Labels) prometheus.Metric {
 	return metric
 }
 
-func (v *Vector) reset() {
+func (v *vector) reset() {
 	c := v.Labels.Constant
 	v.metrics = make(map[uint64]Metric)
 	v.Labels = NewLabels(c)
 	v.desc = prometheus.NewDesc(v.Name, v.Help, nil, c)
+}
+
+func (v *vector) exceedMaxLength() bool {
+	return v.MaxLength > 0 && v.Length() > v.MaxLength
 }

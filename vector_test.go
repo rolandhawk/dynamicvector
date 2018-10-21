@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createVector(d time.Duration) *dynamicvector.Vector {
+func createVector(d time.Duration) dynamicvector.Vector {
 	return dynamicvector.NewCounter(dynamicvector.CounterOpts{
 		Name:        "counter_vector",
 		Help:        "testing",
@@ -33,7 +33,7 @@ func labelEqual(t *testing.T, m *dto.Metric, l map[string]string) {
 	assert.Equal(t, l, lm)
 }
 
-func metricCount(v *dynamicvector.Vector) int {
+func metricCount(v dynamicvector.Vector) int {
 	ch := make(chan prometheus.Metric, 10)
 	v.Collect(ch)
 	close(ch)
