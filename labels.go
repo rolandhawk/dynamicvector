@@ -40,12 +40,12 @@ func (l *Labels) Add(name string) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	i := len(l.Index)
+	i := len(l.Names)
 	l.Names = append(l.Names, name)
 	l.Index[name] = i
 }
 
-// Hash will hash metric labels.
+// Hash will hash specified labels.
 func (l *Labels) Hash(label prometheus.Labels) uint64 {
 	var b bytes.Buffer
 	for _, name := range l.Names {
@@ -53,11 +53,23 @@ func (l *Labels) Hash(label prometheus.Labels) uint64 {
 		b.WriteByte(0)
 	}
 
+	// trim so new label name will not change label hash.
 	return farmhash.Hash64(bytes.TrimRight(b.Bytes(), "\x00"))
 }
 
-// Generate will generate prometheus.Labels given label values.
+// Generate will generate prometheus.Labels given label values. It also include constant labels.
 func (l *Labels) Generate(values []string) prometheus.Labels {
+	lbl := l.GenerateWithoutConstant(values)
+
+	for name, value := range l.Constant {
+		lbl[name] = value
+	}
+
+	return lbl
+}
+
+// GenerateWithoutConstant will generate prometheus.Labels given label values without constant.
+func (l *Labels) GenerateWithoutConstant(values []string) prometheus.Labels {
 	lbl := make(prometheus.Labels)
 
 	for i, name := range l.Names {
@@ -66,10 +78,6 @@ func (l *Labels) Generate(values []string) prometheus.Labels {
 		} else {
 			lbl[name] = values[i]
 		}
-	}
-
-	for name, value := range l.Constant {
-		lbl[name] = value
 	}
 
 	return lbl

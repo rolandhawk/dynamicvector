@@ -48,6 +48,17 @@ func TestLabels_Generate(t *testing.T) {
 	assert.Equal(t, prometheus.Labels{"name": "value", "key1": "", "key2": "value"}, l.Generate([]string{"", "value"}))
 }
 
+func TestLabels_GenerateWithoutConstant(t *testing.T) {
+	l := createLabels()
+
+	l.Add("key1")
+	l.Add("key2")
+
+	assert.Equal(t, prometheus.Labels{"key1": "value", "key2": ""}, l.GenerateWithoutConstant([]string{"value"}))
+	assert.Equal(t, prometheus.Labels{"key1": "value", "key2": ""}, l.GenerateWithoutConstant([]string{"value", ""}))
+	assert.Equal(t, prometheus.Labels{"key1": "", "key2": "value"}, l.GenerateWithoutConstant([]string{"", "value"}))
+}
+
 func TestLabels_Include(t *testing.T) {
 	l := createLabels()
 	l.Add("key1")
