@@ -19,6 +19,7 @@ import (
 type Metric interface {
 	prometheus.Metric
 
+	// LastEdit indicate last time Metric is edited.
 	LastEdit() time.Time
 }
 
@@ -36,9 +37,13 @@ type Vector struct {
 	// Expire is a duration to keep metrics.
 	Expire time.Duration
 
-	metrics     map[uint64]Metric
-	constructor func(labelValues []string) Metric
-	desc        *prometheus.Desc
+	// MaxLength is maximum length that this vector is allowed to have.
+	MaxLength int
+
+	pseudoLength int                               // it used when resetting vector that already exceed max length.
+	metrics      map[uint64]Metric                 // vector metric
+	constructor  func(labelValues []string) Metric // constructor to make new metric
+	desc         *prometheus.Desc
 
 	mtx sync.RWMutex
 }
@@ -47,6 +52,10 @@ type Vector struct {
 func (v *Vector) Collect(ch chan<- prometheus.Metric) {
 	v.mtx.RLock()
 	defer v.mtx.RUnlock()
+
+	if v.Length() > v.MaxLength {
+		return
+	}
 
 	for _, m := range v.metrics {
 		if v.Expire == 0 || time.Since(m.LastEdit()) <= v.Expire {
@@ -101,7 +110,11 @@ func (v *Vector) With(l prometheus.Labels) prometheus.Metric {
 
 // Length will return number of metrics in this vector.
 func (v *Vector) Length() int {
-	return len(v.metrics)
+	if v.pseudoLength > 0 {
+		return v.pseudoLength
+	} else {
+		return len(v.metrics)
+	}
 }
 
 // Reset will delete all metrics in vector.
