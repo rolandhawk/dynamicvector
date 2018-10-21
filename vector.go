@@ -99,6 +99,11 @@ func (v *Vector) With(l prometheus.Labels) prometheus.Metric {
 	return metric
 }
 
+// Length will return number of metrics in this vector.
+func (v *Vector) Length() int {
+	return len(v.metrics)
+}
+
 // Reset will delete all metrics in vector.
 func (v *Vector) Reset() {
 	v.mtx.Lock()
