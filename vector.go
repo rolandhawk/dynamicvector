@@ -34,10 +34,10 @@ type Vector struct {
 	// Labels contain information about metric labels.
 	Labels *Labels
 
-	// Expire is a duration to keep metrics.
+	// Expire is a duration to keep metrics. Zero mean no expire.
 	Expire time.Duration
 
-	// MaxLength is maximum length that this vector is allowed to have.
+	// MaxLength is maximum length that this vector is allowed to have. Zero mean no maximum length.
 	MaxLength int
 
 	pseudoLength int                               // it used when resetting vector that already exceed max length.
@@ -53,7 +53,7 @@ func (v *Vector) Collect(ch chan<- prometheus.Metric) {
 	v.mtx.RLock()
 	defer v.mtx.RUnlock()
 
-	if v.Length() > v.MaxLength {
+	if v.MaxLength > 0 && v.Length() > v.MaxLength {
 		return
 	}
 
@@ -122,23 +122,30 @@ func (v *Vector) Reset() {
 	v.mtx.Lock()
 	defer v.mtx.Unlock()
 
-	c := v.Labels.Constant
-	v.metrics = make(map[uint64]Metric)
-	v.Labels = NewLabels(c)
-	v.desc = prometheus.NewDesc(v.Name, v.Help, nil, c)
+	v.reset()
 }
 
-// GC will delete all expired metrics and return number of gced metrics.
+// GC will do housekeeping work related to this metrics and return
+// number of metrics that is deleted. Currently there are two things that this method do.
+// First, delete all expired metrics. Second, delete all metrics for vector that exceed MaxLength.
 func (v *Vector) GC() int {
+	count := 0
 	v.mtx.Lock()
 	defer v.mtx.Unlock()
 
-	count := 0
+	// delete expired metrics
 	for h, m := range v.metrics {
 		if v.Expire != 0 && time.Since(m.LastEdit()) > v.Expire {
 			delete(v.metrics, h)
 			count++
 		}
+	}
+
+	// delete all metrics for vector that exceed MaxLength
+	if v.MaxLength > 0 && v.Length() > v.MaxLength {
+		v.pseudoLength = v.Length()
+		v.reset()
+		count = count + v.pseudoLength
 	}
 
 	return count
@@ -174,4 +181,11 @@ func (v *Vector) create(l prometheus.Labels) prometheus.Metric {
 	v.metrics[v.Labels.Hash(l)] = metric
 
 	return metric
+}
+
+func (v *Vector) reset() {
+	c := v.Labels.Constant
+	v.metrics = make(map[uint64]Metric)
+	v.Labels = NewLabels(c)
+	v.desc = prometheus.NewDesc(v.Name, v.Help, nil, c)
 }
