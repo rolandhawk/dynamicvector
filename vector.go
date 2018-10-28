@@ -32,24 +32,12 @@ type Vector interface {
 	// It returns true if a metric was deleted.
 	Delete(prometheus.Labels) bool
 
-	// DeleteLabelValues removes the metric where the variable labels are the same as those passed in
-	// as labels (same order as the VariableLabels in Desc). It returns true if a metric was deleted.
-	DeleteLabelValues(lvs ...string) bool
-
 	// GetMetricWith returns the Metric for the given Labels map (the label names must match those of
 	// the VariableLabels in Desc). If that label map is accessed for the first time, a new Metric is created.
 	GetMetricWith(prometheus.Labels) (prometheus.Metric, error)
 
-	// GetMetricWithLabelValues returns the Metric for the given slice of label values
-	// (same order as the VariableLabels in Desc). If that combination of label values is accessed for the first time,
-	// a new Metric is created.
-	GetMetricWithLabelValues(lvs ...string) (prometheus.Metric, error)
-
 	// With works as GetMetricWith, but panics where GetMetricWithLabels would have returned an error.
 	With(prometheus.Labels) prometheus.Metric
-
-	// WithLabelValues works as GetMetricWithLabelValues, but panics where GetMetricWithLabelValues would have returned an error.
-	WithLabelValues(lvs ...string) prometheus.Metric
 
 	// CurryWith returns a vector curried with the provided labels.
 	CurryWith(prometheus.Labels) (Vector, error)
@@ -133,15 +121,6 @@ func (v *vector) Delete(l prometheus.Labels) bool {
 	return found
 }
 
-func (v *vector) DeleteLabelValues(lvs ...string) bool {
-	if len(lvs) > len(v.Labels.Names) {
-		return false
-	}
-
-	l := v.Labels.GenerateWithoutConstant(lvs)
-	return v.Delete(l)
-}
-
 func (v *vector) GetMetricWith(labels prometheus.Labels) (prometheus.Metric, error) {
 	v.mtx.RLock()
 	metric := v.get(labels)
@@ -165,15 +144,6 @@ func (v *vector) GetMetricWith(labels prometheus.Labels) (prometheus.Metric, err
 	return v.create(labels), nil
 }
 
-func (v *vector) GetMetricWithLabelValues(lvs ...string) (prometheus.Metric, error) {
-	if len(lvs) > len(v.Labels.Names) {
-		return nil, fmt.Errorf("label value length exceeds label key length")
-	}
-
-	l := v.Labels.GenerateWithoutConstant(lvs)
-	return v.GetMetricWith(l)
-}
-
 // With will return or create metric with specified labels.
 func (v *vector) With(l prometheus.Labels) prometheus.Metric {
 	m, err := v.GetMetricWith(l)
@@ -184,21 +154,19 @@ func (v *vector) With(l prometheus.Labels) prometheus.Metric {
 	return m
 }
 
-func (v *vector) WithLabelValues(lvs ...string) prometheus.Metric {
-	m, err := v.GetMetricWithLabelValues(lvs...)
+func (v *vector) CurryWith(lbs prometheus.Labels) (Vector, error) {
+	return &curry{
+		vector: v,
+		labels: lbs,
+	}, nil
+}
+
+func (v *vector) MustCurryWith(lbs prometheus.Labels) Vector {
+	vec, err := v.CurryWith(lbs)
 	if err != nil {
 		panic(err)
 	}
-
-	return m
-}
-
-func (v *vector) CurryWith(prometheus.Labels) (Vector, error) {
-	return nil, nil
-}
-
-func (v *vector) MustCurryWith(prometheus.Labels) Vector {
-	return nil
+	return vec
 }
 
 // Length will return number of metrics in this vector.
