@@ -21,30 +21,7 @@ type Histogram struct {
 
 // NewHistogram will return a new dynamicvector histogram.
 func NewHistogram(opts HistogramOpts) *Histogram {
-	vec := &Vector{
-		Name:      prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		Help:      opts.Help,
-		Labels:    NewLabels(opts.ConstLabels),
-		Expire:    opts.Expire,
-		MaxLength: opts.MaxLength,
-	}
-
-	vec.constructor = func(labelValues []string) Metric {
-		b := make(map[float64]uint64)
-		for _, v := range opts.Buckets {
-			b[v] = 0
-		}
-
-		return &HistogramUnit{
-			vec:     vec,
-			labels:  labelValues,
-			last:    time.Now(),
-			buckets: b,
-		}
-	}
-	vec.Reset()
-
-	return &Histogram{vec}
+	return &Histogram{NewVector(opts, NewHistogramUnit)}
 }
 
 // With is a syntatic sugar for Vector.GetMetricWith
@@ -73,6 +50,21 @@ type HistogramUnit struct {
 	mtx sync.RWMutex
 }
 
+// NewHistogramUnit will create new hitogram with specified label values.
+func NewHistogramUnit(vec *Vector, labelValues []string) Metric {
+	b := make(map[float64]uint64)
+	for _, v := range vec.opts.Buckets {
+		b[v] = 0
+	}
+
+	return &HistogramUnit{
+		vec:     vec,
+		labels:  labelValues,
+		last:    time.Now(),
+		buckets: b,
+	}
+}
+
 func (u *HistogramUnit) Desc() *prometheus.Desc {
 	return u.vec.desc
 }
@@ -86,7 +78,7 @@ func (u *HistogramUnit) Write(metric *dto.Metric) error {
 		buckets = append(buckets, &dto.Bucket{CumulativeCount: proto.Uint64(count), UpperBound: proto.Float64(bound)})
 	}
 
-	metric.Label = LabelsProto(u.vec.Labels.Generate(u.labels))
+	metric.Label = LabelsProto(u.vec.labels.ValuesToPromLabels(u.labels))
 	metric.Histogram = &dto.Histogram{SampleCount: proto.Uint64(u.count), SampleSum: proto.Float64(u.sum), Bucket: buckets}
 
 	return nil

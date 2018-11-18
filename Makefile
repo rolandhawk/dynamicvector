@@ -1,5 +1,5 @@
 test:
-	govendor test -cover +local,^program
+	go test -cover ./...
 
 cover:
 	govendor test -v -coverprofile=cover.out +local

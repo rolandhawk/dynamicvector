@@ -68,7 +68,7 @@ func (u *GaugeUnit) Write(metric *dto.Metric) error {
 	u.mtx.RLock()
 	defer u.mtx.RUnlock()
 
-	metric.Label = LabelsProto(u.vec.Labels.Generate(u.labels))
+	metric.Label = LabelsProto(u.vec.labels.ValuesToPromLabels(u.labels))
 	metric.Gauge = &dto.Gauge{Value: proto.Float64(u.val)}
 
 	return nil
