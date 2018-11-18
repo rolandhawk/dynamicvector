@@ -78,7 +78,7 @@ func (u *HistogramUnit) Write(metric *dto.Metric) error {
 		buckets = append(buckets, &dto.Bucket{CumulativeCount: proto.Uint64(count), UpperBound: proto.Float64(bound)})
 	}
 
-	metric.Label = LabelsProto(u.vec.labels.ValuesToPromLabels(u.labels))
+	metric.Label = labelsToProto(u.vec.labels.ValuesToPromLabels(u.labels))
 	metric.Histogram = &dto.Histogram{SampleCount: proto.Uint64(u.count), SampleSum: proto.Float64(u.sum), Bucket: buckets}
 
 	return nil

@@ -97,8 +97,7 @@ func (l *Labels) Include(lbl prometheus.Labels) bool {
 	return true
 }
 
-// LabelsProto translate prometheus.Labels into LabelPair protobuf
-func LabelsProto(l prometheus.Labels) []*dto.LabelPair {
+func labelsToProto(l prometheus.Labels) []*dto.LabelPair {
 	if len(l) == 0 {
 		return nil
 	}

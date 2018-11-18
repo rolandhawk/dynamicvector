@@ -68,7 +68,7 @@ func (u *CounterUnit) Write(metric *dto.Metric) error {
 	u.mtx.RLock()
 	defer u.mtx.RUnlock()
 
-	metric.Label = LabelsProto(u.vec.labels.ValuesToPromLabels(u.labels))
+	metric.Label = labelsToProto(u.vec.labels.ValuesToPromLabels(u.labels))
 	metric.Counter = &dto.Counter{Value: proto.Float64(u.val)}
 
 	return nil
