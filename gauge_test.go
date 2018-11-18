@@ -15,14 +15,14 @@ import (
 )
 
 func TestGauge_GetMetricWith_NoError(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 
 	_, err := v.GetMetricWith(prometheus.Labels{"label1": "value1"})
 	assert.NoError(t, err)
 }
 
 func TestGauge_GetMetricWith_Error(t *testing.T) {
-	v := gaugeVector(1)
+	v := createGauge(1)
 
 	_, err := v.GetMetricWith(prometheus.Labels{"label1": "value1"})
 	assert.NoError(t, err)
@@ -33,14 +33,14 @@ func TestGauge_GetMetricWith_Error(t *testing.T) {
 }
 
 func TestGauge_With(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 
 	// no assertion, we only test if it panic or not.
 	v.With(prometheus.Labels{"label1": "value1"})
 }
 
 func TestGaugeUnit_Desc(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan *prometheus.Desc, 1)
@@ -51,7 +51,7 @@ func TestGaugeUnit_Desc(t *testing.T) {
 }
 
 func TestGaugeUnit_Write(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 
 	var m dto.Metric
@@ -61,7 +61,7 @@ func TestGaugeUnit_Write(t *testing.T) {
 }
 
 func TestGaugeUnit_Describe(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan *prometheus.Desc, 1)
@@ -72,7 +72,7 @@ func TestGaugeUnit_Describe(t *testing.T) {
 }
 
 func TestGaugeUnit_Collect(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan prometheus.Metric, 1)
@@ -83,7 +83,7 @@ func TestGaugeUnit_Collect(t *testing.T) {
 }
 
 func TestGaugeUnit_Set(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{})
 	gauge.Set(2.4)
 
@@ -93,7 +93,7 @@ func TestGaugeUnit_Set(t *testing.T) {
 }
 
 func TestGaugeUnit_Inc(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{})
 	gauge.Inc()
 
@@ -103,7 +103,7 @@ func TestGaugeUnit_Inc(t *testing.T) {
 }
 
 func TestGaugeUnit_Dec(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{})
 	gauge.Dec()
 
@@ -113,7 +113,7 @@ func TestGaugeUnit_Dec(t *testing.T) {
 }
 
 func TestGaugeUnit_Add(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 	gauge.Add(11.1)
 
@@ -123,7 +123,7 @@ func TestGaugeUnit_Add(t *testing.T) {
 }
 
 func TestGaugeUnit_Sub(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 	gauge.Sub(11.1)
 
@@ -133,7 +133,7 @@ func TestGaugeUnit_Sub(t *testing.T) {
 }
 
 func TestGaugeUnit_SetToCurrentTime(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 	gauge.SetToCurrentTime()
 
@@ -143,7 +143,7 @@ func TestGaugeUnit_SetToCurrentTime(t *testing.T) {
 }
 
 func TestGaugeUnit_LastEdit(t *testing.T) {
-	v := gaugeVector(0)
+	v := createGauge(0)
 	gauge := v.With(prometheus.Labels{"label1": "value1"})
 	last := gauge.(dynamicvector.Metric).LastEdit()
 
@@ -151,7 +151,7 @@ func TestGaugeUnit_LastEdit(t *testing.T) {
 	assert.True(t, last.Before(gauge.(dynamicvector.Metric).LastEdit()))
 }
 
-func gaugeVector(ml int) *dynamicvector.Gauge {
+func createGauge(ml int) *dynamicvector.Gauge {
 	return dynamicvector.NewGauge(dynamicvector.GaugeOpts{
 		Name:        "gauge_vector",
 		Help:        "testing",
