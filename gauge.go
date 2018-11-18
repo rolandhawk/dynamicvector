@@ -119,7 +119,7 @@ func (u *GaugeUnit) Sub(v float64) {
 
 // SetToCurrentTime implement prometheus.Gauge
 func (u *GaugeUnit) SetToCurrentTime() {
-	// https://github.com/prometheus/client_golang/blob/master/prometheus/value.go#L85
+	// https://github.com/prometheus/client_golang/blob/master/prometheus/gauge.go#L99
 	u.Set(float64(time.Now().UnixNano()) / 1e9)
 }
 

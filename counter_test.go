@@ -14,23 +14,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCounter_GetMetricWith(t *testing.T) {
-	cv := createCounter()
+func TestCounter_GetMetricWith_NoError(t *testing.T) {
+	cv := createCounter(0)
 
-	_, err := cv.GetMetricWith(prometheus.Labels{"label3": "value3"})
+	_, err := cv.GetMetricWith(prometheus.Labels{"label1": "value1"})
 	assert.NoError(t, err)
 }
 
+func TestCounter_GetMetricWith_Error(t *testing.T) {
+	cv := createCounter(1)
+
+	_, err := cv.GetMetricWith(prometheus.Labels{"label1": "value1"})
+	assert.NoError(t, err)
+	_, err = cv.GetMetricWith(prometheus.Labels{"label1": "value2"})
+	assert.NoError(t, err)
+	_, err = cv.GetMetricWith(prometheus.Labels{"label2": "value1"})
+	assert.Error(t, err)
+}
+
 func TestCounter_With(t *testing.T) {
-	cv := createCounter()
+	cv := createCounter(0)
 
 	// no assertion, we only test if it panic or not.
-	cv.With(prometheus.Labels{"label3": "value3"})
+	cv.With(prometheus.Labels{"label1": "value1"})
 }
 
 func TestCounterUnit_Desc(t *testing.T) {
-	cv := createCounter()
-	counter := cv.With(prometheus.Labels{"label3": "value3"})
+	cv := createCounter(0)
+	counter := cv.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan *prometheus.Desc, 1)
 	cv.Describe(ch)
@@ -40,8 +51,8 @@ func TestCounterUnit_Desc(t *testing.T) {
 }
 
 func TestCounterUnit_Write(t *testing.T) {
-	cv := createCounter()
-	counter := cv.With(prometheus.Labels{"label3": "value3"})
+	cv := createCounter(0)
+	counter := cv.With(prometheus.Labels{"label1": "value1"})
 
 	var m dto.Metric
 	err := counter.Write(&m)
@@ -50,8 +61,8 @@ func TestCounterUnit_Write(t *testing.T) {
 }
 
 func TestCounterUnit_Describe(t *testing.T) {
-	cv := createCounter()
-	counter := cv.With(prometheus.Labels{"label3": "value3"})
+	cv := createCounter(0)
+	counter := cv.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan *prometheus.Desc, 1)
 	counter.Describe(ch)
@@ -61,8 +72,8 @@ func TestCounterUnit_Describe(t *testing.T) {
 }
 
 func TestCounterUnit_Collect(t *testing.T) {
-	cv := createCounter()
-	counter := cv.With(prometheus.Labels{"label3": "value3"})
+	cv := createCounter(0)
+	counter := cv.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan prometheus.Metric, 1)
 	counter.Collect(ch)
@@ -72,8 +83,8 @@ func TestCounterUnit_Collect(t *testing.T) {
 }
 
 func TestCounterUnit_Inc(t *testing.T) {
-	cv := createCounter()
-	counter := cv.With(prometheus.Labels{"label3": "value3"})
+	cv := createCounter(0)
+	counter := cv.With(prometheus.Labels{})
 	counter.Inc()
 
 	var m dto.Metric
@@ -82,8 +93,8 @@ func TestCounterUnit_Inc(t *testing.T) {
 }
 
 func TestCounterUnit_Add(t *testing.T) {
-	cv := createCounter()
-	counter := cv.With(prometheus.Labels{"label3": "value3"})
+	cv := createCounter(0)
+	counter := cv.With(prometheus.Labels{"label1": "value1"})
 	counter.Add(11.1)
 
 	var m dto.Metric
@@ -92,18 +103,19 @@ func TestCounterUnit_Add(t *testing.T) {
 }
 
 func TestCounterUnit_LastEdit(t *testing.T) {
-	cv := createCounter()
-	counter := cv.With(prometheus.Labels{"label3": "value3"})
+	cv := createCounter(0)
+	counter := cv.With(prometheus.Labels{"label1": "value1"})
 	last := counter.(dynamicvector.Metric).LastEdit()
 
 	counter.Inc()
 	assert.True(t, last.Before(counter.(dynamicvector.Metric).LastEdit()))
 }
 
-func createCounter() *dynamicvector.Counter {
+func createCounter(ml int) *dynamicvector.Counter {
 	return dynamicvector.NewCounter(dynamicvector.CounterOpts{
 		Name:        "counter_vector",
 		Help:        "testing",
-		ConstLabels: prometheus.Labels{"label1": "value1", "label2": "value2"},
+		ConstLabels: prometheus.Labels{},
+		MaxLength:   ml,
 	})
 }
