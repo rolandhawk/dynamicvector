@@ -14,61 +14,83 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createHistogram() *dynamicvector.Histogram {
-	return dynamicvector.NewHistogram(dynamicvector.HistogramOpts{
-		Name:        "counter_vector",
-		Help:        "testing",
-		ConstLabels: prometheus.Labels{"label1": "value1", "label2": "value2"},
-		Buckets:     []float64{1, 10, 100},
-	})
+func TestHistogram_GetMetricWith_NoError(t *testing.T) {
+	v := createHistogram(0)
+
+	_, err := v.GetMetricWith(prometheus.Labels{"label1": "value1"})
+	assert.NoError(t, err)
+}
+
+func TestHistogram_GetMetricWith_Error(t *testing.T) {
+	v := createHistogram(1)
+
+	_, err := v.GetMetricWith(prometheus.Labels{"label1": "value1"})
+	assert.NoError(t, err)
+	_, err = v.GetMetricWith(prometheus.Labels{"label1": "value2"})
+	assert.NoError(t, err)
+	_, err = v.GetMetricWith(prometheus.Labels{"label2": "value1"})
+	assert.Error(t, err)
+}
+
+func TestHistogram_With(t *testing.T) {
+	v := createHistogram(0)
+
+	// no assertion, we only test if it panic or not.
+	v.With(prometheus.Labels{"label1": "value1"})
 }
 
 func TestHistogramUnit_Desc(t *testing.T) {
-	hv := createHistogram()
+	v := createHistogram(0)
+	histogram := v.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan *prometheus.Desc, 1)
-	histogram := hv.With(prometheus.Labels{"label3": "value3"})
+	v.Describe(ch)
+	close(ch)
+
+	assert.Equal(t, histogram.Desc(), <-ch)
+}
+
+func TestHistogramUnit_Write(t *testing.T) {
+	v := createHistogram(0)
+	histogram := v.With(prometheus.Labels{"label1": "value1"})
+
+	var m dto.Metric
+	err := histogram.Write(&m)
+	assert.NoError(t, err)
+	assert.NotNil(t, m.Histogram)
+}
+
+func TestHistogramUnit_Describe(t *testing.T) {
+	v := createHistogram(0)
+	histogram := v.With(prometheus.Labels{"label1": "value1"})
+
+	ch := make(chan *prometheus.Desc, 1)
 	histogram.Describe(ch)
 	close(ch)
+
 	assert.Equal(t, histogram.Desc(), <-ch)
 }
 
 func TestHistogramUnit_Collect(t *testing.T) {
-	hv := createHistogram()
+	v := createHistogram(0)
+	histogram := v.With(prometheus.Labels{"label1": "value1"})
 
 	ch := make(chan prometheus.Metric, 1)
-	histogram := hv.With(prometheus.Labels{"label3": "value3"})
 	histogram.Collect(ch)
 	close(ch)
 
-	assert.NotNil(t, <-ch)
+	assert.Equal(t, histogram, <-ch)
 }
 
 func TestHistogramUnit_Observe(t *testing.T) {
-	hv := createHistogram()
+	v := createHistogram(0)
+	histogram := v.With(prometheus.Labels{"label1": "value1"})
+	histogram.Observe(1.1)
 
-	h := hv.With(prometheus.Labels{"label3": "value3"})
-	m := &dto.Metric{}
-	h.Write(m)
-	assert.Equal(t, uint64(0), *(m.Histogram.SampleCount))
-	assert.Equal(t, float64(0), *(m.Histogram.SampleSum))
-	assert.Equal(t, 3, len(m.Histogram.Bucket))
-	for _, b := range m.Histogram.Bucket {
-		switch *b.UpperBound {
-		case float64(1), float64(10), float64(100):
-			assert.Equal(t, uint64(0), *(b.CumulativeCount))
-		default:
-			t.Error("wrong upperbound")
-		}
-	}
-
-	m = &dto.Metric{}
-	h.Observe(5.5)
-	h.Write(m)
-
-	h.Write(m)
+	var m dto.Metric
+	histogram.Write(&m)
 	assert.Equal(t, uint64(1), *(m.Histogram.SampleCount))
-	assert.Equal(t, float64(5.5), *(m.Histogram.SampleSum))
+	assert.Equal(t, float64(1.1), *(m.Histogram.SampleSum))
 	assert.Equal(t, 3, len(m.Histogram.Bucket))
 	for _, b := range m.Histogram.Bucket {
 		switch *b.UpperBound {
@@ -83,11 +105,20 @@ func TestHistogramUnit_Observe(t *testing.T) {
 }
 
 func TestHistogramUnit_LastEdit(t *testing.T) {
-	hv := createHistogram()
+	v := createHistogram(0)
+	histogram := v.With(prometheus.Labels{"label1": "value1"})
+	last := histogram.(dynamicvector.Metric).LastEdit()
 
-	h := hv.With(prometheus.Labels{"label3": "value3"})
-	last := h.(dynamicvector.Metric).LastEdit()
+	histogram.Observe(1)
+	assert.True(t, last.Before(histogram.(dynamicvector.Metric).LastEdit()))
+}
 
-	h.Observe(1)
-	assert.True(t, last.Before(h.(dynamicvector.Metric).LastEdit()))
+func createHistogram(ml int) *dynamicvector.Histogram {
+	return dynamicvector.NewHistogram(dynamicvector.HistogramOpts{
+		Name:        "counter_vector",
+		Help:        "testing",
+		ConstLabels: prometheus.Labels{"label1": "value1", "label2": "value2"},
+		Buckets:     []float64{1, 10, 100},
+		MaxLength:   ml,
+	})
 }
