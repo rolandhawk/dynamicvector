@@ -47,46 +47,6 @@ func NewVector(opts Opts, cons func(v *Vector, labelValues []string) Metric) *Ve
 	return vec
 }
 
-// Collect implement prometheus.Collector.
-func (v *Vector) Collect(ch chan<- prometheus.Metric) {
-	v.mtx.RLock()
-	defer v.mtx.RUnlock()
-
-	if v.exceedMaxLength() {
-		return
-	}
-
-	for _, m := range v.metrics {
-		if !v.isExpire(m.LastEdit()) {
-			ch <- m
-		}
-	}
-}
-
-// Describe implement prometheus.Collector.
-func (v *Vector) Describe(ch chan<- *prometheus.Desc) {
-	v.mtx.RLock()
-	defer v.mtx.RUnlock()
-
-	ch <- v.desc
-}
-
-// Delete will delete metric that have exact match labels from vector.
-func (v *Vector) Delete(l prometheus.Labels) bool {
-	v.mtx.Lock()
-	defer v.mtx.Unlock()
-
-	if !v.labels.Include(l) {
-		return false
-	}
-
-	h := v.labels.Hash(l)
-	_, found := v.metrics[h]
-	delete(v.metrics, h)
-
-	return found
-}
-
 // GetMetricWith returns the Metric for the given Labels map (the label names must match those of
 // the VariableLabels in Desc). If that label map is accessed for the first time, a new Metric is created.
 // Return error if maxLen is exceeded.
@@ -139,6 +99,46 @@ func (v *Vector) Reset() {
 	v.reset()
 }
 
+// Delete will delete metric that have exact match labels from vector.
+func (v *Vector) Delete(l prometheus.Labels) bool {
+	v.mtx.Lock()
+	defer v.mtx.Unlock()
+
+	if !v.labels.Include(l) {
+		return false
+	}
+
+	h := v.labels.Hash(l)
+	_, found := v.metrics[h]
+	delete(v.metrics, h)
+
+	return found
+}
+
+// Collect implement prometheus.Collector.
+func (v *Vector) Collect(ch chan<- prometheus.Metric) {
+	v.mtx.RLock()
+	defer v.mtx.RUnlock()
+
+	if v.exceedMaxLength() {
+		return
+	}
+
+	for _, m := range v.metrics {
+		if !v.isExpire(m.LastEdit()) {
+			ch <- m
+		}
+	}
+}
+
+// Describe implement prometheus.Collector.
+func (v *Vector) Describe(ch chan<- *prometheus.Desc) {
+	v.mtx.RLock()
+	defer v.mtx.RUnlock()
+
+	ch <- v.desc
+}
+
 // GC will do housekeeping work related to this metrics and return
 // number of metrics that is deleted. Currently there are two things that this method do.
 // First, delete all expired metrics. Second, delete all metrics for vector that exceed MaxLength.
@@ -151,7 +151,7 @@ func (v *Vector) GC() GCStat {
 	for h, m := range v.metrics {
 		if v.isExpire(m.LastEdit()) {
 			delete(v.metrics, h)
-			stat.Expire++
+			stat.Deleted++
 		}
 	}
 
@@ -159,7 +159,7 @@ func (v *Vector) GC() GCStat {
 	if v.exceedMaxLength() {
 		v.pseudoLength = v.Length()
 		v.reset()
-		stat.Expire = stat.Expire + v.pseudoLength
+		stat.Deleted = stat.Deleted + v.pseudoLength
 		stat.LimitExceeded = true
 	}
 
@@ -213,8 +213,8 @@ func (v *Vector) newDesc() *prometheus.Desc {
 
 // GCStat is status for garbage collector.
 type GCStat struct {
-	// Number of expired metrics
-	Expire int
+	// Number of deleted metrics
+	Deleted int
 
 	// Whether metric exceed limit or not.
 	LimitExceeded bool

@@ -13,10 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createLabels() *dynamicvector.Labels {
-	return dynamicvector.NewLabels(prometheus.Labels{"name": "value"})
-}
-
 func TestLabels_PromLabelsToValues(t *testing.T) {
 	l := createLabels()
 
@@ -70,4 +66,8 @@ func TestLabels_Include(t *testing.T) {
 	assert.True(t, l.Include(prometheus.Labels{"key1": "value"}))
 	assert.False(t, l.Include(prometheus.Labels{"key2": "value"}))
 	assert.False(t, l.Include(prometheus.Labels{"key2": "value", "key1": "value"}))
+}
+
+func createLabels() *dynamicvector.Labels {
+	return dynamicvector.NewLabels(prometheus.Labels{"name": "value"})
 }

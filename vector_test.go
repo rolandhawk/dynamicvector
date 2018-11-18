@@ -10,55 +10,135 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/rolandhawk/dynamicvector"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestVector_With(t *testing.T) {
-	v := createVector(0)
+func TestVector_GetMetricWith_Normal(t *testing.T) {
+	v := createVector(0, 0)
 
-	m1 := v.With(prometheus.Labels{"label3": "value3"})
-	m2 := v.With(prometheus.Labels{"label4": "value4"})
+	m1, err := v.GetMetricWith(prometheus.Labels{"label3": "value3"})
+	assert.NoError(t, err)
+	m2, err := v.GetMetricWith(prometheus.Labels{"label4": "value4"})
+	assert.NoError(t, err)
+	m3, err := v.GetMetricWith(prometheus.Labels{"label3": "value3"})
+	assert.NoError(t, err)
 
-	dto1 := &dto.Metric{}
-	dto2 := &dto.Metric{}
-
-	m1.Write(dto1)
-	m2.Write(dto2)
-
-	assert.Equal(t, 4, len(dto1.GetLabel()))
-	assert.Equal(t, 4, len(dto2.GetLabel()))
-	labelEqual(t, dto1, map[string]string{"label1": "value1", "label2": "value2", "label3": "value3", "label4": ""})
-	labelEqual(t, dto2, map[string]string{"label1": "value1", "label2": "value2", "label3": "", "label4": "value4"})
+	assert.Equal(t, v, m1.(*metric).v)
+	assert.Equal(t, v, m2.(*metric).v)
+	assert.Equal(t, m1.(*metric).lbl, []string{"value3"})
+	assert.Equal(t, m2.(*metric).lbl, []string{"", "value4"})
+	assert.Equal(t, m1, m3)
 }
 
-func TestVector_Collect_Normal(t *testing.T) {
-	v := createVector(0)
+func TestVector_GetMetricWith_Limit(t *testing.T) {
+	v := createVector(0, 1)
+
+	_, err := v.GetMetricWith(prometheus.Labels{"label3": "value3"})
+	assert.NoError(t, err)
+	_, err = v.GetMetricWith(prometheus.Labels{"label3": "value4"})
+	assert.NoError(t, err)
+	_, err = v.GetMetricWith(prometheus.Labels{"label4": "value4"})
+	assert.Error(t, err)
+}
+
+func TestVector_With_NoPanic(t *testing.T) {
+	v := createVector(0, 0)
+
+	m1, _ := v.GetMetricWith(prometheus.Labels{"label3": "value3"})
+	m2 := v.With(prometheus.Labels{"label3": "value3"})
+
+	assert.Equal(t, m1, m2)
+}
+
+func TestVector_With_Panic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("should be panic")
+		}
+	}()
+
+	v := createVector(0, 1)
+	v.With(prometheus.Labels{"label3": "value3"})
+	v.With(prometheus.Labels{"label3": "value4"})
+	v.With(prometheus.Labels{"label4": "value4"})
+}
+
+func TestVector_Length(t *testing.T) {
+	v := createVector(0, 0)
+	assert.Equal(t, 0, v.Length())
 
 	v.With(prometheus.Labels{"label3": "value3"})
+	assert.Equal(t, 1, v.Length())
+
+	v.With(prometheus.Labels{"label4": "value4"})
+	assert.Equal(t, 2, v.Length())
+
+	v.With(prometheus.Labels{"label3": "value3"})
+	assert.Equal(t, 2, v.Length())
+}
+
+func TestVector_Reset(t *testing.T) {
+	v := createVector(0, 0)
+
+	m1 := v.With(prometheus.Labels{"label3": "value3"})
+	v.Reset()
+
+	m2 := v.With(prometheus.Labels{"label3": "value3"})
+	assert.Equal(t, 1, v.Length())
+	if m1 == m2 {
+		t.Error("metric should not equal after reset")
+	}
+}
+
+func TestVector_Delete(t *testing.T) {
+	v := createVector(0, 0)
+
+	v.With(prometheus.Labels{})
 	v.With(prometheus.Labels{"label3": "value3"})
 	v.With(prometheus.Labels{"label3": "value4"})
 	v.With(prometheus.Labels{"label4": "value4"})
 
-	assert.Equal(t, 3, metricCount(v))
+	assert.True(t, v.Delete(prometheus.Labels{"label3": "value4"}))
+	assert.False(t, v.Delete(prometheus.Labels{"label5": "value4"}))
+
+	assert.Equal(t, 3, v.Length())
+}
+
+func TestVector_Collect_Normal(t *testing.T) {
+	v := createVector(0, 0)
+
+	v.With(prometheus.Labels{"label3": "value3"})
+	v.With(prometheus.Labels{"label3": "value4"})
+	v.With(prometheus.Labels{"label4": "value4"})
+
+	assert.Equal(t, 3, len(collect(v)))
 }
 
 func TestVector_Collect_Expire(t *testing.T) {
-	v := createVector(50 * time.Millisecond)
+	v := createVector(50*time.Millisecond, 0)
 
-	v.With(prometheus.Labels{"label3": "value3"})
 	v.With(prometheus.Labels{"label3": "value3"})
 	v.With(prometheus.Labels{"label3": "value4"})
 	v.With(prometheus.Labels{"label4": "value4"})
 
 	time.Sleep(100 * time.Millisecond)
 
-	assert.Equal(t, 0, metricCount(v))
+	assert.Equal(t, 0, len(collect(v)))
+}
+
+func TestVector_Collecto_ExceedMaxLen(t *testing.T) {
+	v := createVector(0, 1)
+
+	v.GetMetricWith(prometheus.Labels{"label3": "value3"})
+	v.GetMetricWith(prometheus.Labels{"label3": "value4"})
+	v.GetMetricWith(prometheus.Labels{"label4": "value4"})
+
+	assert.Equal(t, 0, len(collect(v)))
 }
 
 func TestVector_Describe(t *testing.T) {
-	v := createVector(0)
+	v := createVector(0, 0)
 
 	ch := make(chan *prometheus.Desc, 10)
 	v.Describe(ch)
@@ -83,73 +163,71 @@ func TestVector_Describe(t *testing.T) {
 	assert.NotEqual(t, d3, d4)
 }
 
-func TestVector_Delete(t *testing.T) {
-	v := createVector(0)
-
-	v.With(prometheus.Labels{})
-	v.With(prometheus.Labels{"label3": "value3"})
-	v.With(prometheus.Labels{"label3": "value3"})
-	v.With(prometheus.Labels{"label3": "value4"})
-	v.With(prometheus.Labels{"label4": "value4"})
-
-	assert.True(t, v.Delete(prometheus.Labels{"label3": "value4"}))
-	assert.False(t, v.Delete(prometheus.Labels{"label5": "value4"}))
-
-	assert.Equal(t, 3, metricCount(v))
-}
-
-func TestVector_Reset(t *testing.T) {
-	v := createVector(0)
+func TestVector_GC_Expire(t *testing.T) {
+	v := createVector(50*time.Millisecond, 0)
 
 	v.With(prometheus.Labels{})
 	v.With(prometheus.Labels{"label3": "value3"})
 
-	v.Reset()
-
-	assert.Equal(t, 0, metricCount(v))
-}
-
-func TestVector_GC(t *testing.T) {
-	v := createVector(50 * time.Millisecond)
-
-	v.With(prometheus.Labels{})
-	v.With(prometheus.Labels{"label3": "value3"})
-
-	assert.Equal(t, 0, v.GC())
-	assert.Equal(t, 2, metricCount(v))
+	assert.Equal(t, 0, v.GC().Deleted)
+	assert.Equal(t, 2, v.Length())
 
 	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 2, v.GC())
-	assert.Equal(t, 0, metricCount(v))
+	assert.Equal(t, 2, v.GC().Deleted)
+	assert.Equal(t, 0, v.Length())
 }
 
-func createVector(d time.Duration) *dynamicvector.Vector {
-	return dynamicvector.NewCounter(dynamicvector.CounterOpts{
-		Name:        "counter_vector",
+func TestVector_GC_LimitExceeded(t *testing.T) {
+	v := createVector(0, 1)
+
+	v.With(prometheus.Labels{})
+	stat := v.GC()
+	assert.Equal(t, 0, stat.Deleted)
+	assert.False(t, stat.LimitExceeded)
+	assert.Equal(t, 1, v.Length())
+
+	v.With(prometheus.Labels{"label3": "value3"})
+	stat = v.GC()
+	assert.Equal(t, 2, stat.Deleted)
+	assert.True(t, stat.LimitExceeded)
+	assert.Equal(t, 2, v.Length())
+}
+
+type metric struct {
+	dynamicvector.Metric
+
+	v   *dynamicvector.Vector
+	lbl []string
+	le  time.Time
+}
+
+func newMetric(v *dynamicvector.Vector, lbl []string) dynamicvector.Metric {
+	return &metric{v: v, lbl: lbl, le: time.Now()}
+}
+
+func (m *metric) LastEdit() time.Time {
+	return m.le
+}
+
+func createVector(d time.Duration, ml int) *dynamicvector.Vector {
+	return dynamicvector.NewVector(dynamicvector.Opts{
+		Name:        "vector",
 		Help:        "testing",
 		ConstLabels: prometheus.Labels{"label1": "value1", "label2": "value2"},
 		Expire:      d,
-	}).Vector
+		MaxLength:   ml,
+	}, newMetric)
 }
 
-func labelEqual(t *testing.T, m *dto.Metric, l map[string]string) {
-	lm := make(map[string]string)
-	for _, lp := range m.GetLabel() {
-		lm[lp.GetName()] = lp.GetValue()
-	}
-
-	assert.Equal(t, l, lm)
-}
-
-func metricCount(v *dynamicvector.Vector) int {
+func collect(v *dynamicvector.Vector) []prometheus.Metric {
 	ch := make(chan prometheus.Metric, 10)
 	v.Collect(ch)
 	close(ch)
 
-	index := 0
-	for range ch {
-		index++
+	var res []prometheus.Metric
+	for m := range ch {
+		res = append(res, m)
 	}
 
-	return index
+	return res
 }
