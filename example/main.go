@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -15,6 +17,7 @@ var (
 		Help:        "Application response time",
 		Buckets:     []float64{1, 10, 100},
 		ConstLabels: map[string]string{"key": "value"},
+		Expire:      30 * time.Second,
 	})
 )
 
@@ -28,6 +31,14 @@ func main() {
 	responseTime.With(prometheus.Labels{"url": "/index"}).Observe(0.1)
 	responseTime.With(prometheus.Labels{"url": "/test"}).Observe(1.1)
 	responseTime.With(prometheus.Labels{"url": "/test", "user": "1"}).Observe(19.1)
+	go func() {
+		i := 0
+		for {
+			responseTime.With(prometheus.Labels{fmt.Sprintf("label%d", i): "/index"}).Observe(0.1)
+			time.Sleep(10 * time.Second)
+			i++
+		}
+	}()
 
 	// The Handler function provides a default handler to expose metrics
 	// via an HTTP server. "/metrics" is the usual endpoint for that.
