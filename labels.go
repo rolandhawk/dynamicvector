@@ -7,10 +7,11 @@ package dynamicvector
 
 import (
 	"bytes"
-	"sync"
 
 	farmhash "github.com/dgryski/go-farm"
+	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // Labels represent structure data for Metric. It designed to be used internally for dynamicvector.
@@ -18,49 +19,43 @@ type Labels struct {
 	// Constant is constant label.
 	Constant prometheus.Labels
 
-	// Names is ordering for label names.
-	Names []string
+	// Keys is label keys.
+	Keys []string
 
-	// Index is index for name.
-	Index map[string]int
-
-	mtx sync.Mutex
+	index map[string]int // index for label name.
 }
 
 // NewLabels will create new Labels with initial constant.
 func NewLabels(constantLabels prometheus.Labels) *Labels {
 	return &Labels{
 		Constant: constantLabels,
-		Index:    make(map[string]int),
+		index:    make(map[string]int),
 	}
 }
 
-// Add will add new label name to Labels
-func (l *Labels) Add(name string) {
-	l.mtx.Lock()
-	defer l.mtx.Unlock()
+// PromLabelsToValues will generate label values from prometheus labels. If there is label key that
+// has not registered to Labels yet, it will be added.
+func (l *Labels) PromLabelsToValues(lbl prometheus.Labels) []string {
+	values := make([]string, len(l.Keys))
 
-	i := len(l.Index)
-	l.Names = append(l.Names, name)
-	l.Index[name] = i
-}
-
-// Hash will hash metric labels.
-func (l *Labels) Hash(label prometheus.Labels) uint64 {
-	var b bytes.Buffer
-	for _, name := range l.Names {
-		b.WriteString(label[name])
-		b.WriteByte(0)
+	for key, value := range lbl {
+		if i, ok := l.index[key]; ok {
+			values[i] = value
+		} else {
+			l.index[key] = len(l.Keys)
+			l.Keys = append(l.Keys, key)
+			values = append(values, value)
+		}
 	}
 
-	return farmhash.Hash64(bytes.TrimRight(b.Bytes(), "\x00"))
+	return values
 }
 
-// Generate will generate prometheus.Labels given label values.
-func (l *Labels) Generate(values []string) prometheus.Labels {
+// ValuesToPromLabels will generate prometheus.Labels given label values and constant labels.
+func (l *Labels) ValuesToPromLabels(values []string) prometheus.Labels {
 	lbl := make(prometheus.Labels)
 
-	for i, name := range l.Names {
+	for i, name := range l.Keys {
 		if i >= len(values) {
 			lbl[name] = ""
 		} else {
@@ -75,17 +70,45 @@ func (l *Labels) Generate(values []string) prometheus.Labels {
 	return lbl
 }
 
+// Hash will return hash value from labels.
+func (l *Labels) Hash(label prometheus.Labels) uint64 {
+	var b bytes.Buffer
+	for _, key := range l.Keys {
+		b.WriteString(label[key])
+		b.WriteByte(0)
+	}
+
+	// trim so new label key will not change label hash.
+	return farmhash.Hash64(bytes.TrimRight(b.Bytes(), "\x00"))
+}
+
 // Include will check whether lbl is subset of Labels or not.
 func (l *Labels) Include(lbl prometheus.Labels) bool {
-	if len(lbl) > len(l.Index) {
+	if len(lbl) > len(l.index) {
 		return false
 	}
 
 	for name := range lbl {
-		if _, found := l.Index[name]; !found {
+		if _, found := l.index[name]; !found {
 			return false
 		}
 	}
 
 	return true
+}
+
+func labelsToProto(l prometheus.Labels) []*dto.LabelPair {
+	if len(l) == 0 {
+		return nil
+	}
+
+	pair := make([]*dto.LabelPair, 0, len(l))
+	for name, value := range l {
+		pair = append(pair, &dto.LabelPair{
+			Name:  proto.String(name),
+			Value: proto.String(value),
+		})
+	}
+
+	return pair
 }

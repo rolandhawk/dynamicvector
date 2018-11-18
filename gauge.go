@@ -21,23 +21,17 @@ type Gauge struct {
 
 // NewGauge will return a new dynamicvector gauge.
 func NewGauge(opts GaugeOpts) *Gauge {
-	vec := &Vector{
-		Name:   prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		Help:   opts.Help,
-		Labels: NewLabels(opts.ConstLabels),
-		Expire: opts.Expire,
+	return &Gauge{NewVector(opts, NewGaugeUnit)}
+}
+
+// With is a syntatic sugar for Vector.GetMetricWith
+func (g *Gauge) GetMetricWith(labels prometheus.Labels) (prometheus.Gauge, error) {
+	metric, err := g.Vector.GetMetricWith(labels)
+	if err != nil {
+		return nil, err
 	}
 
-	vec.constructor = func(labelValues []string) Metric {
-		return &gaugeUnit{
-			vec:    vec,
-			labels: labelValues,
-			last:   time.Now(),
-		}
-	}
-	vec.Reset()
-
-	return &Gauge{vec}
+	return metric.(prometheus.Gauge), nil
 }
 
 // With is a syntatic sugar for Vector.With(labels).(prometheus.Gauge)
@@ -45,7 +39,8 @@ func (g *Gauge) With(labels prometheus.Labels) prometheus.Gauge {
 	return g.Vector.With(labels).(prometheus.Gauge)
 }
 
-type gaugeUnit struct {
+// GaugeUnit implement prometheus.Gauge and Metric
+type GaugeUnit struct {
 	val    float64
 	vec    *Vector
 	labels []string
@@ -54,29 +49,43 @@ type gaugeUnit struct {
 	mtx sync.RWMutex
 }
 
-func (u *gaugeUnit) Desc() *prometheus.Desc {
+// NewGaugeUnit will create new counter with specified label values.
+func NewGaugeUnit(vec *Vector, labelValues []string) Metric {
+	return &GaugeUnit{
+		vec:    vec,
+		labels: labelValues,
+		last:   time.Now(),
+	}
+}
+
+// Desc implement prometheus.Gauge (prometheus.Metric)
+func (u *GaugeUnit) Desc() *prometheus.Desc {
 	return u.vec.desc
 }
 
-func (u *gaugeUnit) Write(metric *dto.Metric) error {
+// Write implement prometheus.Gauge (prometheus.Metric)
+func (u *GaugeUnit) Write(metric *dto.Metric) error {
 	u.mtx.RLock()
 	defer u.mtx.RUnlock()
 
-	metric.Label = LabelsProto(u.vec.Labels.Generate(u.labels))
+	metric.Label = labelsToProto(u.vec.labels.ValuesToPromLabels(u.labels))
 	metric.Gauge = &dto.Gauge{Value: proto.Float64(u.val)}
 
 	return nil
 }
 
-func (u *gaugeUnit) Describe(ch chan<- *prometheus.Desc) {
+// Describe implement prometheus.Gauge (prometheus.Collector)
+func (u *GaugeUnit) Describe(ch chan<- *prometheus.Desc) {
 	ch <- u.vec.desc
 }
 
-func (u *gaugeUnit) Collect(ch chan<- prometheus.Metric) {
+// Collect implement prometheus.Gauge (prometheus.Collector)
+func (u *GaugeUnit) Collect(ch chan<- prometheus.Metric) {
 	ch <- u
 }
 
-func (u *gaugeUnit) Set(v float64) {
+// Set implement prometheus.Gauge
+func (u *GaugeUnit) Set(v float64) {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
@@ -84,15 +93,18 @@ func (u *gaugeUnit) Set(v float64) {
 	u.last = time.Now()
 }
 
-func (u *gaugeUnit) Inc() {
+// Inc implement prometheus.Gauge
+func (u *GaugeUnit) Inc() {
 	u.Add(1)
 }
 
-func (u *gaugeUnit) Dec() {
+// Dec implement prometheus.Gauge
+func (u *GaugeUnit) Dec() {
 	u.Add(-1)
 }
 
-func (u *gaugeUnit) Add(v float64) {
+// Add implement prometheus.Gauge
+func (u *GaugeUnit) Add(v float64) {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
@@ -100,15 +112,18 @@ func (u *gaugeUnit) Add(v float64) {
 	u.last = time.Now()
 }
 
-func (u *gaugeUnit) Sub(v float64) {
+// Sub implement prometheus.Gauge
+func (u *GaugeUnit) Sub(v float64) {
 	u.Add(-v)
 }
 
-func (u *gaugeUnit) SetToCurrentTime() {
-	// https://github.com/prometheus/client_golang/blob/master/prometheus/value.go#L85
+// SetToCurrentTime implement prometheus.Gauge
+func (u *GaugeUnit) SetToCurrentTime() {
+	// https://github.com/prometheus/client_golang/blob/master/prometheus/gauge.go#L99
 	u.Set(float64(time.Now().UnixNano()) / 1e9)
 }
 
-func (u *gaugeUnit) LastEdit() time.Time {
+// LastEdit implement Metric
+func (u *GaugeUnit) LastEdit() time.Time {
 	return u.last
 }
