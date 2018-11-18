@@ -3,7 +3,7 @@ jobs:
   build:
     docker:
       - image: circleci/golang:1.11
-    working_directory: /my-app
+    working_directory: ~/dynamicvector
     steps:
       - checkout
       - restore_cache:
