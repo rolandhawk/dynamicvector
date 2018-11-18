@@ -13,4 +13,5 @@ require (
 	github.com/prometheus/common v0.0.0-20181116084131-1f2c4f3cd6db // indirect
 	github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d // indirect
 	github.com/stretchr/testify v1.2.2
+	golang.org/x/sync v0.0.0-20181108010431-42b317875d0f // indirect
 )
