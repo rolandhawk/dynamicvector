@@ -22,10 +22,11 @@ type Histogram struct {
 // NewHistogram will return a new dynamicvector histogram.
 func NewHistogram(opts HistogramOpts) *Histogram {
 	vec := &Vector{
-		Name:   prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		Help:   opts.Help,
-		Labels: NewLabels(opts.ConstLabels),
-		Expire: opts.Expire,
+		Name:      prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
+		Help:      opts.Help,
+		Labels:    NewLabels(opts.ConstLabels),
+		Expire:    opts.Expire,
+		MaxLength: opts.MaxLength,
 	}
 
 	vec.constructor = func(labelValues []string) Metric {
@@ -34,7 +35,7 @@ func NewHistogram(opts HistogramOpts) *Histogram {
 			b[v] = 0
 		}
 
-		return &histogramUnit{
+		return &HistogramUnit{
 			vec:     vec,
 			labels:  labelValues,
 			last:    time.Now(),
@@ -46,12 +47,22 @@ func NewHistogram(opts HistogramOpts) *Histogram {
 	return &Histogram{vec}
 }
 
+// With is a syntatic sugar for Vector.GetMetricWith
+func (h *Histogram) GetMetricWith(labels prometheus.Labels) (prometheus.Histogram, error) {
+	metric, err := h.Vector.GetMetricWith(labels)
+	if err != nil {
+		return nil, err
+	}
+
+	return metric.(prometheus.Histogram), nil
+}
+
 // With is a syntatic sugar for Vector.With(labels).(prometheus.Histogram)
 func (h *Histogram) With(labels prometheus.Labels) prometheus.Histogram {
 	return h.Vector.With(labels).(prometheus.Histogram)
 }
 
-type histogramUnit struct {
+type HistogramUnit struct {
 	sum     float64
 	count   uint64
 	buckets map[float64]uint64
@@ -62,11 +73,11 @@ type histogramUnit struct {
 	mtx sync.RWMutex
 }
 
-func (u *histogramUnit) Desc() *prometheus.Desc {
+func (u *HistogramUnit) Desc() *prometheus.Desc {
 	return u.vec.desc
 }
 
-func (u *histogramUnit) Write(metric *dto.Metric) error {
+func (u *HistogramUnit) Write(metric *dto.Metric) error {
 	u.mtx.RLock()
 	defer u.mtx.RUnlock()
 
@@ -81,15 +92,15 @@ func (u *histogramUnit) Write(metric *dto.Metric) error {
 	return nil
 }
 
-func (u *histogramUnit) Describe(ch chan<- *prometheus.Desc) {
+func (u *HistogramUnit) Describe(ch chan<- *prometheus.Desc) {
 	ch <- u.vec.desc
 }
 
-func (u *histogramUnit) Collect(ch chan<- prometheus.Metric) {
+func (u *HistogramUnit) Collect(ch chan<- prometheus.Metric) {
 	ch <- u
 }
 
-func (u *histogramUnit) Observe(v float64) {
+func (u *HistogramUnit) Observe(v float64) {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
@@ -103,6 +114,6 @@ func (u *histogramUnit) Observe(v float64) {
 	u.last = time.Now()
 }
 
-func (u *histogramUnit) LastEdit() time.Time {
+func (u *HistogramUnit) LastEdit() time.Time {
 	return u.last
 }

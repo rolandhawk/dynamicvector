@@ -15,37 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createVector(d time.Duration) *dynamicvector.Vector {
-	return dynamicvector.NewCounter(dynamicvector.CounterOpts{
-		Name:        "counter_vector",
-		Help:        "testing",
-		ConstLabels: prometheus.Labels{"label1": "value1", "label2": "value2"},
-		Expire:      d,
-	}).Vector
-}
-
-func labelEqual(t *testing.T, m *dto.Metric, l map[string]string) {
-	lm := make(map[string]string)
-	for _, lp := range m.GetLabel() {
-		lm[lp.GetName()] = lp.GetValue()
-	}
-
-	assert.Equal(t, l, lm)
-}
-
-func metricCount(v *dynamicvector.Vector) int {
-	ch := make(chan prometheus.Metric, 10)
-	v.Collect(ch)
-	close(ch)
-
-	index := 0
-	for range ch {
-		index++
-	}
-
-	return index
-}
-
 func TestVector_With(t *testing.T) {
 	v := createVector(0)
 
@@ -152,4 +121,35 @@ func TestVector_GC(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, 2, v.GC())
 	assert.Equal(t, 0, metricCount(v))
+}
+
+func createVector(d time.Duration) *dynamicvector.Vector {
+	return dynamicvector.NewCounter(dynamicvector.CounterOpts{
+		Name:        "counter_vector",
+		Help:        "testing",
+		ConstLabels: prometheus.Labels{"label1": "value1", "label2": "value2"},
+		Expire:      d,
+	}).Vector
+}
+
+func labelEqual(t *testing.T, m *dto.Metric, l map[string]string) {
+	lm := make(map[string]string)
+	for _, lp := range m.GetLabel() {
+		lm[lp.GetName()] = lp.GetValue()
+	}
+
+	assert.Equal(t, l, lm)
+}
+
+func metricCount(v *dynamicvector.Vector) int {
+	ch := make(chan prometheus.Metric, 10)
+	v.Collect(ch)
+	close(ch)
+
+	index := 0
+	for range ch {
+		index++
+	}
+
+	return index
 }

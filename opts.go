@@ -29,6 +29,9 @@ type Opts struct {
 	// Expire are used to set how long dynamicvector will keep the metrics. Zero
 	// mean never expire.
 	Expire time.Duration
+
+	// MaxLength is maximum length that this vector is allowed to have. Zero mean no maximum length.
+	MaxLength int
 }
 
 // HistogramOpts is an option for creating Histogram vector.
@@ -52,10 +55,26 @@ type HistogramOpts struct {
 	// Expire are used to set how long dynamicvector will keep the metrics. Zero
 	// mean never expire.
 	Expire time.Duration
+
+	// MaxLength is maximum length that this vector is allowed to have. Zero mean no maximum length.
+	MaxLength int
+}
+
+// Opts is helper function to extract Opts from HistogramOpts
+func (ho HistogramOpts) Opts() Opts {
+	return Opts{
+		Namespace:   ho.Namespace,
+		Subsystem:   ho.Subsystem,
+		Name:        ho.Name,
+		Help:        ho.Help,
+		ConstLabels: ho.ConstLabels,
+		Expire:      ho.Expire,
+		MaxLength:   ho.MaxLength,
+	}
 }
 
 // CounterOpts is an alias for Opts
-type CounterOpts Opts
+type CounterOpts = Opts
 
 // GaugeOpts is an alias for Opts
-type GaugeOpts Opts
+type GaugeOpts = Opts

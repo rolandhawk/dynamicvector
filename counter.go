@@ -21,31 +21,26 @@ type Counter struct {
 
 // NewCounter will return a new dynamicvector counter.
 func NewCounter(opts CounterOpts) *Counter {
-	vec := &Vector{
-		Name:   prometheus.BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
-		Help:   opts.Help,
-		Labels: NewLabels(opts.ConstLabels),
-		Expire: opts.Expire,
-	}
-
-	vec.constructor = func(labelValues []string) Metric {
-		return &counterUnit{
-			vec:    vec,
-			labels: labelValues,
-			last:   time.Now(),
-		}
-	}
-	vec.Reset()
-
-	return &Counter{vec}
+	return &Counter{NewVector(opts, NewCounterUnit)}
 }
 
-// With is a syntatic sugar for Vector.With(labels).(prometheus.Counter)
+// With is a syntatic sugar for Vector.GetMetricWith
+func (c *Counter) GetMetricWith(labels prometheus.Labels) (prometheus.Counter, error) {
+	metric, err := c.Vector.GetMetricWith(labels)
+	if err != nil {
+		return nil, err
+	}
+
+	return metric.(prometheus.Counter), nil
+}
+
+// With is a syntatic sugar for Vector.With
 func (c *Counter) With(labels prometheus.Labels) prometheus.Counter {
 	return c.Vector.With(labels).(prometheus.Counter)
 }
 
-type counterUnit struct {
+// CounterUnit implement prometheus.Counter and Metric
+type CounterUnit struct {
 	val    float64
 	vec    *Vector
 	labels []string
@@ -54,11 +49,22 @@ type counterUnit struct {
 	mtx sync.RWMutex
 }
 
-func (u *counterUnit) Desc() *prometheus.Desc {
+// NewCounterUnit will create new counter with specified label values.
+func NewCounterUnit(vec *Vector, labelValues []string) Metric {
+	return &CounterUnit{
+		vec:    vec,
+		labels: labelValues,
+		last:   time.Now(),
+	}
+}
+
+// Desc implement prometheus.Counter (prometheus.Metric)
+func (u *CounterUnit) Desc() *prometheus.Desc {
 	return u.vec.desc
 }
 
-func (u *counterUnit) Write(metric *dto.Metric) error {
+// Write implement prometheus.Counter (prometheus.Metric)
+func (u *CounterUnit) Write(metric *dto.Metric) error {
 	u.mtx.RLock()
 	defer u.mtx.RUnlock()
 
@@ -68,19 +74,23 @@ func (u *counterUnit) Write(metric *dto.Metric) error {
 	return nil
 }
 
-func (u *counterUnit) Describe(ch chan<- *prometheus.Desc) {
+// Describe implement prometheus.Counter (prometheus.Collector)
+func (u *CounterUnit) Describe(ch chan<- *prometheus.Desc) {
 	ch <- u.vec.desc
 }
 
-func (u *counterUnit) Collect(ch chan<- prometheus.Metric) {
+// Collect implement prometheus.Counter (prometheus.Collector)
+func (u *CounterUnit) Collect(ch chan<- prometheus.Metric) {
 	ch <- u
 }
 
-func (u *counterUnit) Inc() {
+// Inc implement prometheus.Counter
+func (u *CounterUnit) Inc() {
 	u.Add(1)
 }
 
-func (u *counterUnit) Add(val float64) {
+// Add implement prometheus.Counter
+func (u *CounterUnit) Add(val float64) {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
@@ -88,6 +98,7 @@ func (u *counterUnit) Add(val float64) {
 	u.last = time.Now()
 }
 
-func (u *counterUnit) LastEdit() time.Time {
+// LastEdit implement Metric
+func (u *CounterUnit) LastEdit() time.Time {
 	return u.last
 }

@@ -40,7 +40,7 @@ func (l *Labels) Add(name string) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	i := len(l.Index)
+	i := len(l.Names)
 	l.Names = append(l.Names, name)
 	l.Index[name] = i
 }
@@ -53,10 +53,11 @@ func (l *Labels) Hash(label prometheus.Labels) uint64 {
 		b.WriteByte(0)
 	}
 
+	// trim so new label name will not change label hash.
 	return farmhash.Hash64(bytes.TrimRight(b.Bytes(), "\x00"))
 }
 
-// Generate will generate prometheus.Labels given label values.
+// Generate will generate prometheus.Labels given label values and constant labels.
 func (l *Labels) Generate(values []string) prometheus.Labels {
 	lbl := make(prometheus.Labels)
 
